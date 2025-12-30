@@ -12,13 +12,11 @@
 // For production:
 // export const API_BASE_URL = 'https://api.clsu-nexus.com/api';
 
-// Development - Use your computer's IP address for physical device testing
-// For iOS Simulator / Android Emulator: use 'http://localhost:3000/api'
-// For Physical Device: use your computer's IP address
-export const API_BASE_URL = 'http://192.168.100.9:3000/api';
+// Production - Railway backend URL
+export const API_BASE_URL = 'https://q-tech-production.up.railway.app/api';
 
 // WebSocket URL - Must match API_BASE_URL domain
-export const WS_URL = 'http://192.168.100.9:3000';
+export const WS_URL = 'https://q-tech-production.up.railway.app';
 
 // App Info
 export const APP_NAME = 'QTech';

@@ -14,8 +14,11 @@ let socket = null;
 export const connectSocket = () => {
   if (!socket) {
     socket = io(WS_URL, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
 
     socket.on('connect', () => {
