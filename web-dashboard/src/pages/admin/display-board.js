@@ -15,7 +15,6 @@ export default function DisplayBoard() {
   const [services, setServices] = useState([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [logoPosition, setLogoPosition] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -38,15 +37,9 @@ export default function DisplayBoard() {
       loadDisplayData();
     }, 5000);
 
-    // Animate logo
-    const logoInterval = setInterval(() => {
-      setLogoPosition(prev => (prev + 1) % 100);
-    }, 50);
-
     return () => {
       clearInterval(timeInterval);
       clearInterval(dataInterval);
-      clearInterval(logoInterval);
     };
   }, [selectedService]);
 
@@ -143,17 +136,7 @@ export default function DisplayBoard() {
         <div style={styles.header}>
           <div style={styles.headerLeft}>
             <div style={styles.logoContainer}>
-              <div style={styles.logoAnimationWrapper}>
-                <img 
-                  src="/logo.png" 
-                  alt="QTech" 
-                  style={{
-                    ...styles.headerLogo,
-                    transform: `translateX(${Math.sin(logoPosition * 0.1) * 5}px)`,
-                    transition: 'transform 0.3s ease-out'
-                  }} 
-                />
-              </div>
+              <img src="/logo.png" alt="QTech" style={styles.headerLogo} />
             </div>
             <div style={styles.titleSection}>
               <h1 style={styles.headerTitle}>QTech Queue Management System</h1>
@@ -166,7 +149,7 @@ export default function DisplayBoard() {
           </div>
           <div style={styles.headerRight}>
             <div style={styles.timeCard}>
-              <HiOutlineClock size={32} style={styles.clockIcon} />
+              <HiOutlineClock size={28} style={styles.clockIcon} />
               <div style={styles.timeContent}>
                 <div style={styles.timeDisplay}>
                   {currentTime.toLocaleTimeString('en-US', {
@@ -195,7 +178,7 @@ export default function DisplayBoard() {
             <div style={styles.servingSection}>
               <div style={styles.sectionHeader}>
                 <div style={styles.sectionIconWrapper}>
-                  <MdCheckCircle size={32} />
+                  <MdCheckCircle size={28} />
                 </div>
                 <h2 style={styles.sectionTitle}>Currently Serving</h2>
               </div>
@@ -207,7 +190,7 @@ export default function DisplayBoard() {
                         key={queue.id} 
                         style={{
                           ...styles.servingCard,
-                          animationDelay: `${index * 0.2}s`
+                          animationDelay: `${index * 0.15}s`
                         }}
                         className="serving-card"
                       >
@@ -229,7 +212,7 @@ export default function DisplayBoard() {
                   </div>
                 ) : (
                   <div style={styles.emptyState}>
-                    <MdQueue size={80} style={styles.emptyIcon} />
+                    <MdQueue size={64} style={styles.emptyIcon} />
                     <p style={styles.emptyText}>No queues currently being served</p>
                   </div>
                 )}
@@ -243,11 +226,11 @@ export default function DisplayBoard() {
             <div style={styles.calledSection}>
               <div style={styles.sectionHeaderSmall}>
                 <div style={styles.sectionIconSmall}>
-                  <MdAccessTime size={24} />
+                  <MdAccessTime size={20} />
                 </div>
                 <h3 style={styles.sectionTitleSmall}>Next in Line</h3>
               </div>
-              <div style={styles.calledContent}>
+              <div style={styles.calledContent} className="called-content">
                 {displayData?.called && displayData.called.length > 0 ? (
                   <div style={styles.calledList}>
                     {displayData.called.map((queue, index) => (
@@ -283,7 +266,7 @@ export default function DisplayBoard() {
             <div style={styles.waitingSection}>
               <div style={styles.sectionHeaderSmall}>
                 <div style={styles.sectionIconSmall}>
-                  <MdQueue size={24} />
+                  <MdQueue size={20} />
                 </div>
                 <h3 style={styles.sectionTitleSmall}>Waiting</h3>
               </div>
@@ -330,7 +313,7 @@ export default function DisplayBoard() {
 const styles = {
   container: {
     minHeight: '100vh',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#0a0f1a',
     color: '#ffffff',
     overflow: 'hidden',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
@@ -341,28 +324,28 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: '100vh',
-    gap: '24px',
+    gap: '20px',
   },
   loadingSpinner: {
-    width: '60px',
-    height: '60px',
-    border: '4px solid rgba(220, 38, 38, 0.2)',
-    borderTop: '4px solid #dc2626',
+    width: '50px',
+    height: '50px',
+    border: '3px solid rgba(220, 38, 38, 0.2)',
+    borderTop: '3px solid #dc2626',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
   },
   loadingText: {
-    color: '#cbd5e0',
-    fontSize: '20px',
+    color: '#94a3b8',
+    fontSize: '18px',
     fontWeight: '500',
   },
   controlBar: {
-    backgroundColor: '#1e293b',
-    padding: '16px 32px',
+    backgroundColor: '#1a1f2e',
+    padding: '12px 24px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid #334155',
+    borderBottom: '1px solid #2a3441',
     zIndex: 1000,
   },
   controlLeft: {
@@ -372,15 +355,15 @@ const styles = {
   logoSection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '10px',
   },
   logoImage: {
-    width: '32px',
-    height: '32px',
+    width: '28px',
+    height: '28px',
     objectFit: 'contain',
   },
   controlTitle: {
-    fontSize: '18px',
+    fontSize: '16px',
     fontWeight: '600',
     color: 'white',
     margin: 0,
@@ -388,105 +371,98 @@ const styles = {
   controlRight: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '10px',
   },
   serviceSelect: {
-    padding: '8px 16px',
-    backgroundColor: '#334155',
-    border: '1px solid #475569',
-    borderRadius: '8px',
+    padding: '6px 12px',
+    backgroundColor: '#2a3441',
+    border: '1px solid #3a4551',
+    borderRadius: '6px',
     color: 'white',
-    fontSize: '14px',
+    fontSize: '13px',
     cursor: 'pointer',
   },
   refreshButton: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px',
-    backgroundColor: '#334155',
-    border: '1px solid #475569',
-    borderRadius: '8px',
+    gap: '6px',
+    padding: '6px 12px',
+    backgroundColor: '#2a3441',
+    border: '1px solid #3a4551',
+    borderRadius: '6px',
     color: 'white',
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: '500',
     cursor: 'pointer',
   },
   fullscreenButton: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px',
+    gap: '6px',
+    padding: '6px 12px',
     backgroundColor: '#dc2626',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: '6px',
     color: 'white',
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: '600',
     cursor: 'pointer',
   },
   displayContent: {
-    padding: '24px 32px',
+    padding: '20px 24px',
     maxWidth: '1920px',
     margin: '0 auto',
     display: 'flex',
     flexDirection: 'column',
-    minHeight: 'calc(100vh - 73px)',
-    gap: '20px',
+    minHeight: 'calc(100vh - 57px)',
+    gap: '16px',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '16px 24px',
-    backgroundColor: '#1e293b',
-    borderRadius: '12px',
-    border: '1px solid #334155',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+    padding: '14px 20px',
+    backgroundColor: '#1a1f2e',
+    borderRadius: '10px',
+    border: '1px solid #2a3441',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
   },
   headerLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: '24px',
+    gap: '16px',
   },
   logoContainer: {
-    width: '60px',
-    height: '60px',
-    borderRadius: '12px',
-    backgroundColor: '#0f172a',
+    width: '52px',
+    height: '52px',
+    borderRadius: '10px',
+    backgroundColor: '#0a0f1a',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '8px',
-    border: '2px solid #334155',
-  },
-  logoAnimationWrapper: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: '6px',
+    border: '1px solid #2a3441',
   },
   headerLogo: {
     width: '100%',
     height: '100%',
     objectFit: 'contain',
-    filter: 'drop-shadow(0 0 8px rgba(220, 38, 38, 0.5))',
+    filter: 'drop-shadow(0 0 6px rgba(220, 38, 38, 0.4))',
   },
   titleSection: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px',
+    gap: '2px',
   },
   headerTitle: {
-    fontSize: '28px',
+    fontSize: '24px',
     fontWeight: '700',
     color: '#ffffff',
     margin: 0,
-    letterSpacing: '-0.5px',
+    letterSpacing: '-0.3px',
   },
   headerSubtitle: {
-    fontSize: '14px',
+    fontSize: '13px',
     color: '#94a3b8',
     margin: 0,
     fontWeight: '500',
@@ -498,11 +474,11 @@ const styles = {
   timeCard: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    padding: '12px 20px',
-    backgroundColor: '#0f172a',
-    borderRadius: '10px',
-    border: '1px solid #334155',
+    gap: '10px',
+    padding: '10px 16px',
+    backgroundColor: '#0a0f1a',
+    borderRadius: '8px',
+    border: '1px solid #2a3441',
   },
   clockIcon: {
     color: '#10b981',
@@ -513,21 +489,21 @@ const styles = {
     gap: '2px',
   },
   timeDisplay: {
-    fontSize: '24px',
+    fontSize: '20px',
     fontWeight: '700',
     color: '#10b981',
     fontFamily: 'monospace',
     lineHeight: '1',
   },
   dateDisplay: {
-    fontSize: '12px',
-    color: '#cbd5e0',
+    fontSize: '11px',
+    color: '#94a3b8',
     fontWeight: '500',
   },
   mainGrid: {
     display: 'grid',
     gridTemplateColumns: '2fr 1fr',
-    gap: '20px',
+    gap: '16px',
     flex: 1,
   },
   servingColumn: {
@@ -538,37 +514,37 @@ const styles = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#1e293b',
-    borderRadius: '16px',
-    padding: '24px',
-    border: '1px solid #334155',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+    backgroundColor: '#1a1f2e',
+    borderRadius: '12px',
+    padding: '20px',
+    border: '1px solid #2a3441',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
   },
   sectionHeader: {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    marginBottom: '20px',
-    paddingBottom: '16px',
-    borderBottom: '2px solid #334155',
+    marginBottom: '18px',
+    paddingBottom: '14px',
+    borderBottom: '2px solid #2a3441',
   },
   sectionIconWrapper: {
-    width: '48px',
-    height: '48px',
-    borderRadius: '10px',
+    width: '44px',
+    height: '44px',
+    borderRadius: '8px',
     backgroundColor: '#dc2626',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     color: 'white',
-    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.3)',
+    boxShadow: '0 2px 6px rgba(220, 38, 38, 0.3)',
   },
   sectionTitle: {
-    fontSize: '22px',
+    fontSize: '20px',
     fontWeight: '700',
     color: '#ffffff',
     margin: 0,
-    letterSpacing: '-0.3px',
+    letterSpacing: '-0.2px',
   },
   servingContent: {
     flex: 1,
@@ -577,77 +553,77 @@ const styles = {
   },
   servingGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '16px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '14px',
   },
   servingCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: '12px',
-    padding: '24px',
+    backgroundColor: '#0a0f1a',
+    borderRadius: '10px',
+    padding: '20px',
     border: '3px solid #dc2626',
-    boxShadow: '0 4px 16px rgba(220, 38, 38, 0.4)',
+    boxShadow: '0 4px 12px rgba(220, 38, 38, 0.35)',
     textAlign: 'center',
-    animation: 'slideInUp 0.6s ease-out',
-    transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+    animation: 'fadeInUp 0.5s ease-out',
+    transition: 'all 0.3s ease',
   },
   queueNumberContainer: {
-    marginBottom: '16px',
+    marginBottom: '14px',
   },
   queueNumberLarge: {
-    fontSize: '96px',
+    fontSize: '80px',
     fontWeight: '900',
     color: '#dc2626',
     lineHeight: '1',
-    marginBottom: '8px',
+    marginBottom: '6px',
     fontFamily: 'monospace',
-    letterSpacing: '3px',
-    textShadow: '0 2px 12px rgba(220, 38, 38, 0.5)',
+    letterSpacing: '2px',
+    textShadow: '0 2px 8px rgba(220, 38, 38, 0.4)',
   },
   queueBadge: {
     display: 'inline-block',
-    padding: '4px 12px',
+    padding: '3px 10px',
     backgroundColor: '#dc2626',
     color: 'white',
-    borderRadius: '16px',
-    fontSize: '11px',
+    borderRadius: '12px',
+    fontSize: '10px',
     fontWeight: '700',
     letterSpacing: '0.5px',
     textTransform: 'uppercase',
   },
   queueDetails: {
-    marginTop: '12px',
+    marginTop: '10px',
   },
   serviceNameLarge: {
-    fontSize: '22px',
+    fontSize: '18px',
     fontWeight: '700',
     color: '#ffffff',
-    marginBottom: '8px',
+    marginBottom: '6px',
   },
   counterBadge: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '6px 12px',
-    backgroundColor: '#1e293b',
+    gap: '5px',
+    padding: '5px 10px',
+    backgroundColor: '#1a1f2e',
     borderRadius: '6px',
-    fontSize: '12px',
-    color: '#cbd5e0',
+    fontSize: '11px',
+    color: '#94a3b8',
     fontWeight: '500',
   },
   counterIcon: {
-    fontSize: '16px',
+    fontSize: '12px',
   },
   rightColumn: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '16px',
+    gap: '14px',
   },
   calledSection: {
-    backgroundColor: '#1e293b',
-    borderRadius: '12px',
-    padding: '20px',
-    border: '1px solid #334155',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+    backgroundColor: '#1a1f2e',
+    borderRadius: '10px',
+    padding: '18px',
+    border: '1px solid #2a3441',
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
     display: 'flex',
     flexDirection: 'column',
     flex: 1,
@@ -656,14 +632,14 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    marginBottom: '16px',
+    marginBottom: '14px',
     paddingBottom: '12px',
-    borderBottom: '1px solid #334155',
+    borderBottom: '1px solid #2a3441',
   },
   sectionIconSmall: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
+    width: '32px',
+    height: '32px',
+    borderRadius: '6px',
     backgroundColor: '#3b82f6',
     display: 'flex',
     alignItems: 'center',
@@ -671,7 +647,7 @@ const styles = {
     color: 'white',
   },
   sectionTitleSmall: {
-    fontSize: '18px',
+    fontSize: '16px',
     fontWeight: '700',
     color: '#ffffff',
     margin: 0,
@@ -680,48 +656,50 @@ const styles = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
+    overflowY: 'auto',
+    maxHeight: '400px',
   },
   calledList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: '8px',
   },
   calledCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: '10px',
-    padding: '16px',
+    backgroundColor: '#0a0f1a',
+    borderRadius: '8px',
+    padding: '14px',
     border: '2px solid #3b82f6',
     textAlign: 'center',
-    animation: 'slideInRight 0.4s ease-out',
-    transition: 'transform 0.2s ease',
+    animation: 'fadeInRight 0.4s ease-out',
+    transition: 'all 0.2s ease',
   },
   queueNumberMedium: {
-    fontSize: '40px',
+    fontSize: '36px',
     fontWeight: '800',
     color: '#3b82f6',
     lineHeight: '1',
-    marginBottom: '8px',
+    marginBottom: '6px',
     fontFamily: 'monospace',
   },
   queueInfoSmall: {
-    marginTop: '6px',
+    marginTop: '4px',
   },
   serviceNameMedium: {
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: '600',
     color: '#ffffff',
-    marginBottom: '4px',
+    marginBottom: '3px',
   },
   counterInfoSmall: {
-    fontSize: '12px',
+    fontSize: '11px',
     color: '#94a3b8',
   },
   waitingSection: {
-    backgroundColor: '#1e293b',
-    borderRadius: '12px',
-    padding: '20px',
-    border: '1px solid #334155',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+    backgroundColor: '#1a1f2e',
+    borderRadius: '10px',
+    padding: '18px',
+    border: '1px solid #2a3441',
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
     display: 'flex',
     flexDirection: 'column',
     flex: 1,
@@ -734,31 +712,31 @@ const styles = {
   waitingGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '10px',
+    gap: '8px',
   },
   waitingCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: '10px',
-    padding: '16px',
-    border: '1px solid #475569',
+    backgroundColor: '#0a0f1a',
+    borderRadius: '8px',
+    padding: '14px',
+    border: '1px solid #3a4551',
     textAlign: 'center',
   },
   waitingServiceName: {
-    fontSize: '13px',
+    fontSize: '12px',
     fontWeight: '600',
-    color: '#cbd5e0',
-    marginBottom: '10px',
+    color: '#94a3b8',
+    marginBottom: '8px',
   },
   waitingCount: {
-    fontSize: '32px',
+    fontSize: '28px',
     fontWeight: '800',
     color: '#f59e0b',
     lineHeight: '1',
-    margin: '6px 0',
+    margin: '4px 0',
   },
   waitingLabel: {
-    fontSize: '11px',
-    color: '#94a3b8',
+    fontSize: '10px',
+    color: '#64748b',
     marginTop: '2px',
   },
   emptyState: {
@@ -767,15 +745,15 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    padding: '60px',
-    gap: '20px',
+    padding: '40px',
+    gap: '16px',
   },
   emptyIcon: {
     color: '#475569',
-    opacity: 0.5,
+    opacity: 0.4,
   },
   emptyText: {
-    fontSize: '20px',
+    fontSize: '16px',
     color: '#64748b',
     fontWeight: '500',
   },
@@ -784,31 +762,31 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    padding: '40px',
+    padding: '30px',
   },
   emptyTextSmall: {
-    fontSize: '16px',
+    fontSize: '14px',
     color: '#64748b',
     fontWeight: '500',
   },
   bannerContainer: {
     backgroundColor: '#dc2626',
-    padding: '16px 0',
-    borderRadius: '10px',
+    padding: '12px 0',
+    borderRadius: '8px',
     overflow: 'hidden',
     border: '1px solid #991b1b',
-    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.3)',
+    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)',
   },
   bannerContent: {
     display: 'flex',
     alignItems: 'center',
-    gap: '20px',
+    gap: '16px',
     whiteSpace: 'nowrap',
-    animation: 'scrollBanner 40s linear infinite',
+    animation: 'scrollBanner 35s linear infinite',
   },
   bannerLogo: {
-    width: '32px',
-    height: '32px',
+    width: '28px',
+    height: '28px',
     flexShrink: 0,
   },
   bannerLogoImg: {
@@ -818,10 +796,10 @@ const styles = {
     filter: 'brightness(0) invert(1)',
   },
   bannerText: {
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: '600',
     color: 'white',
-    letterSpacing: '0.3px',
+    letterSpacing: '0.2px',
   },
 };
 
@@ -833,20 +811,20 @@ if (typeof document !== 'undefined') {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-    @keyframes slideInUp {
+    @keyframes fadeInUp {
       from {
         opacity: 0;
-        transform: translateY(30px);
+        transform: translateY(20px);
       }
       to {
         opacity: 1;
         transform: translateY(0);
       }
     }
-    @keyframes slideInRight {
+    @keyframes fadeInRight {
       from {
         opacity: 0;
-        transform: translateX(-20px);
+        transform: translateX(-15px);
       }
       to {
         opacity: 1;
@@ -862,11 +840,26 @@ if (typeof document !== 'undefined') {
       }
     }
     .serving-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 12px 32px rgba(220, 38, 38, 0.5) !important;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(220, 38, 38, 0.45) !important;
     }
     .called-card:hover {
-      transform: translateX(4px);
+      transform: translateX(2px);
+      border-color: #60a5fa;
+    }
+    .called-content::-webkit-scrollbar {
+      width: 6px;
+    }
+    .called-content::-webkit-scrollbar-track {
+      background: #0a0f1a;
+      border-radius: 3px;
+    }
+    .called-content::-webkit-scrollbar-thumb {
+      background: #3a4551;
+      border-radius: 3px;
+    }
+    .called-content::-webkit-scrollbar-thumb:hover {
+      background: #4a5568;
     }
   `;
   if (!document.head.querySelector('style[data-display-board-animations]')) {
@@ -874,4 +867,3 @@ if (typeof document !== 'undefined') {
     document.head.appendChild(style);
   }
 }
-
