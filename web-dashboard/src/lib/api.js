@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.100.9:3000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://q-tech-production.up.railway.app/api';
 
 // Create axios instance
 const apiClient = axios.create({
