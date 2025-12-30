@@ -136,5 +136,12 @@ router.put('/settings', authenticateToken, authorize('admin'), adminController.u
  */
 router.post('/migrate', adminController.runMigrations);
 
+/**
+ * @route   POST /api/admin/seed
+ * @desc    Seed demo data (requires MIGRATION_SECRET)
+ * @access  Protected by secret token
+ */
+router.post('/seed', adminController.seedDemoData);
+
 module.exports = router;
 
