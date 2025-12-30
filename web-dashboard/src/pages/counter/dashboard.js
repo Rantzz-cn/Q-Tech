@@ -68,7 +68,6 @@ export default function CounterDashboard() {
     try {
       setLoading(true);
       const response = await apiClient.get('/counters/my-counters');
-      console.log('Loaded counters:', response.data); // Debug log
       
       if (response.success && response.data.length > 0) {
         setCounters(response.data);
@@ -87,14 +86,17 @@ export default function CounterDashboard() {
           counterToSelect = response.data[0];
         }
         
-        setSelectedCounter(counterToSelect);
-        
-        if (counterToSelect && counterToSelect.id) {
-          try {
-            await loadCounterData(counterToSelect.id);
-          } catch (err) {
-            setCurrentQueue(null);
-            setQueueStatus(null);
+        // Only update selected counter if it changed
+        if (counterToSelect && counterToSelect.id !== selectedCounterRef.current?.id) {
+          setSelectedCounter(counterToSelect);
+          // Load data for newly selected counter
+          if (counterToSelect.id) {
+            try {
+              await loadCounterData(counterToSelect.id);
+            } catch (err) {
+              setCurrentQueue(null);
+              setQueueStatus(null);
+            }
           }
         }
       } else if (response.success && response.data.length === 0) {
@@ -112,10 +114,11 @@ export default function CounterDashboard() {
   }, []);
 
   useEffect(() => {
-    // Auto-refresh counters list every 15 seconds to pick up new counters
+    // Auto-refresh counters list every 60 seconds to pick up new counters
+    // (Counters don't change frequently, so we can refresh less often)
     const countersInterval = setInterval(() => {
       loadCounters();
-    }, 15000); // Refresh every 15 seconds
+    }, 60000); // Refresh every 60 seconds
 
     // Refresh when window regains focus (user switches back to tab)
     const handleFocus = () => {
@@ -139,12 +142,13 @@ export default function CounterDashboard() {
   }, [loadCounters]);
 
   useEffect(() => {
-    // Auto-refresh every 10 seconds when counter is selected
+    // Auto-refresh counter data every 30 seconds when counter is selected
+    // (Queue status changes more frequently, but 30s is sufficient for real-time feel)
     if (!selectedCounter?.id) return;
 
     const interval = setInterval(() => {
       loadCounterData(selectedCounter.id);
-    }, 10000);
+    }, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
   }, [selectedCounter?.id]);
