@@ -1155,6 +1155,139 @@ exports.runMigrations = async (req, res) => {
     const fs = require('fs');
     const path = require('path');
 
+    // Embedded SQL migrations (fallback if files not found)
+    const embeddedMigrations = {
+      '001_create_tables.sql': `-- Create all tables
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    student_id VARCHAR(50) UNIQUE,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(20),
+    role VARCHAR(20) NOT NULL DEFAULT 'student',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_role CHECK (role IN ('student', 'counter_staff', 'admin'))
+);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE TABLE IF NOT EXISTS services (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    location VARCHAR(255),
+    is_active BOOLEAN DEFAULT true,
+    estimated_service_time INTEGER DEFAULT 5,
+    max_queue_size INTEGER DEFAULT 100,
+    operating_hours_start TIME,
+    operating_hours_end TIME,
+    queue_prefix VARCHAR(10),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_services_is_active ON services(is_active);
+CREATE TABLE IF NOT EXISTS counters (
+    id SERIAL PRIMARY KEY,
+    service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    counter_number VARCHAR(10) NOT NULL,
+    name VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'closed',
+    current_serving_queue_id INTEGER,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_counter_status CHECK (status IN ('open', 'busy', 'closed', 'break')),
+    CONSTRAINT unique_counter_per_service UNIQUE (service_id, counter_number)
+);
+CREATE INDEX IF NOT EXISTS idx_counters_service_id ON counters(service_id);
+CREATE INDEX IF NOT EXISTS idx_counters_status ON counters(status);
+CREATE TABLE IF NOT EXISTS queue_entries (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    counter_id INTEGER REFERENCES counters(id),
+    queue_number VARCHAR(20) NOT NULL,
+    queue_position INTEGER NOT NULL,
+    status VARCHAR(20) DEFAULT 'waiting',
+    estimated_wait_time INTEGER,
+    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    called_at TIMESTAMP,
+    started_serving_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    cancelled_at TIMESTAMP,
+    notes TEXT,
+    CONSTRAINT chk_queue_status CHECK (status IN ('waiting', 'called', 'serving', 'completed', 'skipped', 'cancelled'))
+);
+CREATE INDEX IF NOT EXISTS idx_queue_entries_user_id ON queue_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_queue_entries_service_id ON queue_entries(service_id);
+CREATE INDEX IF NOT EXISTS idx_queue_entries_counter_id ON queue_entries(counter_id);
+CREATE INDEX IF NOT EXISTS idx_queue_entries_status ON queue_entries(status);
+CREATE INDEX IF NOT EXISTS idx_queue_entries_requested_at ON queue_entries(requested_at);
+ALTER TABLE counters ADD CONSTRAINT fk_counters_current_serving_queue_id FOREIGN KEY (current_serving_queue_id) REFERENCES queue_entries(id);
+CREATE TABLE IF NOT EXISTS queue_logs (
+    id SERIAL PRIMARY KEY,
+    queue_entry_id INTEGER NOT NULL REFERENCES queue_entries(id) ON DELETE CASCADE,
+    service_id INTEGER NOT NULL REFERENCES services(id),
+    counter_id INTEGER REFERENCES counters(id),
+    action VARCHAR(50) NOT NULL,
+    action_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    metadata JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_queue_logs_queue_entry_id ON queue_logs(queue_entry_id);
+CREATE TABLE IF NOT EXISTS counter_staff (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    counter_id INTEGER NOT NULL REFERENCES counters(id) ON DELETE CASCADE,
+    is_primary BOOLEAN DEFAULT false,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_staff_counter UNIQUE (user_id, counter_id)
+);
+CREATE INDEX IF NOT EXISTS idx_counter_staff_user_id ON counter_staff(user_id);
+CREATE INDEX IF NOT EXISTS idx_counter_staff_counter_id ON counter_staff(counter_id);
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    queue_entry_id INTEGER REFERENCES queue_entries(id) ON DELETE SET NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    is_read BOOLEAN DEFAULT false,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    read_at TIMESTAMP,
+    CONSTRAINT chk_notification_type CHECK (type IN ('queue_ready', 'approaching', 'called', 'general', 'system'))
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;`,
+      '002_create_system_settings.sql': `CREATE TABLE IF NOT EXISTS system_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT single_row CHECK (id = 1)
+);
+INSERT INTO system_settings (id, settings)
+VALUES (1, '{"queue_number_prefix": "", "notification_before_minutes": 5, "auto_refresh_interval": 5, "display_board_refresh_interval": 5, "max_queue_per_user": 3, "enable_sms_notifications": false, "enable_email_notifications": false, "system_maintenance_mode": false, "maintenance_message": ""}'::jsonb)
+ON CONFLICT (id) DO NOTHING;`,
+      '003_add_queue_prefix_to_services.sql': `ALTER TABLE services ADD COLUMN IF NOT EXISTS queue_prefix VARCHAR(10);`,
+      '004_add_performance_indexes.sql': `CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+CREATE INDEX IF NOT EXISTS idx_queue_entries_service_status ON queue_entries(service_id, status);
+CREATE INDEX IF NOT EXISTS idx_queue_entries_user_service ON queue_entries(user_id, service_id, status);
+CREATE INDEX IF NOT EXISTS idx_services_name ON services(name);
+CREATE INDEX IF NOT EXISTS idx_counters_is_active ON counters(is_active);
+CREATE INDEX IF NOT EXISTS idx_counters_service_active ON counters(service_id, is_active);`
+    };
+
     const migrations = [
       '001_create_tables.sql',
       '002_create_system_settings.sql',
@@ -1162,36 +1295,61 @@ exports.runMigrations = async (req, res) => {
       '004_add_performance_indexes.sql',
     ];
 
-    const migrationsDir = path.join(__dirname, '..', '..', 'database', 'migrations');
+    // Try to load from files first, fallback to embedded SQL
+    let migrationsDir = path.join(__dirname, '..', '..', 'database', 'migrations');
+    if (!fs.existsSync(migrationsDir)) {
+      migrationsDir = path.join(process.cwd(), '..', 'database', 'migrations');
+    }
+    if (!fs.existsSync(migrationsDir)) {
+      migrationsDir = path.join(process.cwd(), 'database', 'migrations');
+    }
+
     const results = [];
 
     for (const migrationFile of migrations) {
+      let sql = null;
+      let source = 'file';
+
+      // Try to read from file
       const filePath = path.join(migrationsDir, migrationFile);
-      
-      if (!fs.existsSync(filePath)) {
+      if (fs.existsSync(filePath)) {
+        try {
+          sql = fs.readFileSync(filePath, 'utf8');
+        } catch (fileError) {
+          console.log(`Could not read ${migrationFile} from file, using embedded version`);
+        }
+      }
+
+      // Fallback to embedded SQL
+      if (!sql && embeddedMigrations[migrationFile]) {
+        sql = embeddedMigrations[migrationFile];
+        source = 'embedded';
+      }
+
+      if (!sql) {
         results.push({
           file: migrationFile,
-          status: 'skipped',
-          message: 'File not found',
+          status: 'error',
+          message: 'Migration SQL not found',
         });
         continue;
       }
 
       try {
-        const sql = fs.readFileSync(filePath, 'utf8');
         await query(sql);
         results.push({
           file: migrationFile,
           status: 'success',
-          message: 'Migration completed',
+          message: `Migration completed (${source})`,
         });
       } catch (error) {
         if (error.message.includes('already exists') || 
-            error.message.includes('duplicate')) {
+            error.message.includes('duplicate') ||
+            error.message.includes('does not exist')) {
           results.push({
             file: migrationFile,
             status: 'skipped',
-            message: 'Already applied',
+            message: 'Already applied or not needed',
           });
         } else {
           results.push({
