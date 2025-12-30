@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLSU NEXUS - WebSocket Test</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            padding-left: 10px;
+        }
+        .event {
+            color: #007bff;
+            font-weight: bold;
+        }
+        .data {
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 CLSU NEXUS WebSocket Test</h1>
+        
+        <div id="status" class="status disconnected">
+            Disconnected
+        </div>
+
+        <div class="section">
+            <h3>Connection</h3>
+            <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
+        </div>
+
+        <div class="section">
+            <h3>Join Rooms</h3>
+            <input type="number" id="serviceId" placeholder="Service ID (e.g., 1)" value="1">
+            <button onclick="joinService()">Join Service</button>
+            <br>
+            <input type="number" id="counterId" placeholder="Counter ID (e.g., 1)" value="1">
+            <button onclick="joinCounter()">Join Counter</button>
+            <br>
+            <input type="number" id="userId" placeholder="User ID (e.g., 6)" value="6">
+            <button onclick="joinUser()">Join User</button>
+        </div>
+
+        <div class="section">
+            <h3>Messages</h3>
+            <div id="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+
+        function addMessage(type, data) {
+            const messages = document.getElementById('messages');
+            const message = document.createElement('div');
+            message.className = 'message';
+            message.innerHTML = `<span class="event">[${new Date().toLocaleTimeString()}] ${type}:</span> <span class="data">${JSON.stringify(data, null, 2)}</span>`;
+            messages.appendChild(message);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            const status = document.getElementById('status');
+            if (connected) {
+                status.className = 'status connected';
+                status.textContent = '✅ Connected';
+            } else {
+                status.className = 'status disconnected';
+                status.textContent = '❌ Disconnected';
+            }
+        }
+
+        function connect() {
+            if (socket) {
+                socket.disconnect();
+            }
+
+            socket = io('http://localhost:3000');
+
+            socket.on('connect', () => {
+                addMessage('CONNECTED', { socketId: socket.id });
+                updateStatus(true);
+            });
+
+            socket.on('disconnect', () => {
+                addMessage('DISCONNECTED', {});
+                updateStatus(false);
+            });
+
+            socket.on('queue_update', (data) => {
+                addMessage('queue_update', data);
+            });
+
+            socket.on('queue_called', (data) => {
+                addMessage('queue_called', data);
+            });
+
+            socket.on('counter_update', (data) => {
+                addMessage('counter_update', data);
+            });
+
+            socket.on('service_status_update', (data) => {
+                addMessage('service_status_update', data);
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                updateStatus(false);
+            }
+        }
+
+        function joinService() {
+            const serviceId = document.getElementById('serviceId').value;
+            if (socket && serviceId) {
+                socket.emit('join_service', { serviceId: parseInt(serviceId) });
+                addMessage('EMIT', { event: 'join_service', data: { serviceId: parseInt(serviceId) } });
+            }
+        }
+
+        function joinCounter() {
+            const counterId = document.getElementById('counterId').value;
+            if (socket && counterId) {
+                socket.emit('join_counter', { counterId: parseInt(counterId) });
+                addMessage('EMIT', { event: 'join_counter', data: { counterId: parseInt(counterId) } });
+            }
+        }
+
+        function joinUser() {
+            const userId = document.getElementById('userId').value;
+            if (socket && userId) {
+                socket.emit('join_user', { userId: parseInt(userId) });
+                addMessage('EMIT', { event: 'join_user', data: { userId: parseInt(userId) } });
+            }
+        }
+
+        // Auto-connect on page load
+        window.onload = () => {
+            connect();
+        };
+    </script>
+</body>
+</html>
+

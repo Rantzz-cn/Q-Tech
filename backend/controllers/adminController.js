@@ -1,0 +1,1125 @@
+const Queue = require('../models/Queue');
+const Service = require('../models/Service');
+const Counter = require('../models/Counter');
+const User = require('../models/User');
+const { query } = require('../config/database');
+
+/**
+ * Get dashboard statistics
+ * GET /api/admin/dashboard
+ */
+exports.getDashboard = async (req, res) => {
+  try {
+    // Get today's date
+    const today = new Date().toISOString().split('T')[0];
+
+    // Total queues today
+    const queuesTodaySql = `
+      SELECT COUNT(*) as total
+      FROM queue_entries
+      WHERE DATE(requested_at) = $1;
+    `;
+    const queuesTodayResult = await query(queuesTodaySql, [today]);
+
+    // Active queues (waiting, called, serving)
+    const activeQueuesSql = `
+      SELECT COUNT(*) as total
+      FROM queue_entries
+      WHERE status IN ('waiting', 'called', 'serving');
+    `;
+    const activeQueuesResult = await query(activeQueuesSql);
+
+    // Completed queues today
+    const completedSql = `
+      SELECT COUNT(*) as total
+      FROM queue_entries
+      WHERE DATE(completed_at) = $1 AND status = 'completed';
+    `;
+    const completedResult = await query(completedSql, [today]);
+
+    // Average wait time today
+    const avgWaitTimeSql = `
+      SELECT AVG(EXTRACT(EPOCH FROM (completed_at - requested_at))/60) as avg_wait_time
+      FROM queue_entries
+      WHERE DATE(completed_at) = $1 AND status = 'completed' AND completed_at IS NOT NULL;
+    `;
+    const avgWaitTimeResult = await query(avgWaitTimeSql, [today]);
+
+    // Service statistics
+    const serviceStatsSql = `
+      SELECT 
+        s.id,
+        s.name,
+        COUNT(qe.id) as queues_today,
+        COUNT(qe.id) FILTER (WHERE qe.status = 'completed' AND DATE(qe.completed_at) = $1) as completed_today,
+        AVG(EXTRACT(EPOCH FROM (qe.completed_at - qe.requested_at))/60) 
+          FILTER (WHERE qe.status = 'completed' AND DATE(qe.completed_at) = $1) as avg_wait_time
+      FROM services s
+      LEFT JOIN queue_entries qe ON s.id = qe.service_id AND DATE(qe.requested_at) = $1
+      WHERE s.is_active = true
+      GROUP BY s.id, s.name
+      ORDER BY queues_today DESC;
+    `;
+    const serviceStatsResult = await query(serviceStatsSql, [today]);
+
+    res.json({
+      success: true,
+      data: {
+        totalQueuesToday: parseInt(queuesTodayResult.rows[0].total) || 0,
+        activeQueues: parseInt(activeQueuesResult.rows[0].total) || 0,
+        completedQueuesToday: parseInt(completedResult.rows[0].total) || 0,
+        averageWaitTime: avgWaitTimeResult.rows[0].avg_wait_time 
+          ? Math.round(avgWaitTimeResult.rows[0].avg_wait_time) 
+          : null,
+        services: serviceStatsResult.rows.map(row => ({
+          serviceId: row.id,
+          serviceName: row.name,
+          queuesToday: parseInt(row.queues_today) || 0,
+          completedToday: parseInt(row.completed_today) || 0,
+          averageWaitTime: row.avg_wait_time ? Math.round(row.avg_wait_time) : null,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Get dashboard error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching dashboard statistics',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get analytics
+ * GET /api/admin/analytics
+ */
+exports.getAnalytics = async (req, res) => {
+  try {
+    const { startDate, endDate, serviceId } = req.query;
+
+    // Build date filter
+    let dateFilter = '';
+    const params = [];
+    let paramCount = 1;
+
+    if (startDate && endDate) {
+      dateFilter = `WHERE DATE(requested_at) BETWEEN $${paramCount} AND $${paramCount + 1}`;
+      params.push(startDate, endDate);
+      paramCount += 2;
+    } else if (startDate) {
+      dateFilter = `WHERE DATE(requested_at) >= $${paramCount}`;
+      params.push(startDate);
+      paramCount += 1;
+    } else {
+      // Default to last 30 days
+      dateFilter = `WHERE requested_at >= CURRENT_DATE - INTERVAL '30 days'`;
+    }
+
+    // Add service filter if provided
+    if (serviceId) {
+      const serviceFilter = dateFilter ? 'AND' : 'WHERE';
+      dateFilter += ` ${serviceFilter} service_id = $${paramCount}`;
+      params.push(serviceId);
+    }
+
+    // Overall statistics
+    const overallStatsSql = `
+      SELECT 
+        COUNT(*) as total_queues,
+        COUNT(*) FILTER (WHERE status = 'completed') as completed_queues,
+        COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled_queues,
+        AVG(EXTRACT(EPOCH FROM (completed_at - requested_at))/60) 
+          FILTER (WHERE status = 'completed') as avg_wait_time,
+        AVG(EXTRACT(EPOCH FROM (completed_at - started_serving_at))/60) 
+          FILTER (WHERE status = 'completed') as avg_service_time
+      FROM queue_entries
+      ${dateFilter};
+    `;
+
+    // Peak hours analysis
+    const peakHoursSql = `
+      SELECT 
+        EXTRACT(HOUR FROM requested_at) as hour,
+        COUNT(*) as queue_count
+      FROM queue_entries
+      ${dateFilter}
+      GROUP BY EXTRACT(HOUR FROM requested_at)
+      ORDER BY queue_count DESC
+      LIMIT 5;
+    `;
+
+    // Service statistics
+    const serviceJoinFilter = dateFilter ? dateFilter.replace('WHERE', 'AND') : '';
+    const serviceStatsSql = `
+      SELECT 
+        s.id,
+        s.name,
+        COUNT(qe.id) as total_queues,
+        COUNT(qe.id) FILTER (WHERE qe.status = 'completed') as completed_queues,
+        AVG(EXTRACT(EPOCH FROM (qe.completed_at - qe.requested_at))/60) 
+          FILTER (WHERE qe.status = 'completed') as avg_wait_time,
+        COUNT(qe.id)::FLOAT / NULLIF(COUNT(DISTINCT DATE(qe.requested_at)), 0) as avg_queues_per_day
+      FROM services s
+      LEFT JOIN queue_entries qe ON s.id = qe.service_id ${serviceJoinFilter}
+      WHERE s.is_active = true
+      GROUP BY s.id, s.name
+      ORDER BY total_queues DESC;
+    `;
+
+    const [overallResult, peakHoursResult, serviceStatsResult] = await Promise.all([
+      query(overallStatsSql, params),
+      query(peakHoursSql, params),
+      query(serviceStatsSql, params),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalQueues: parseInt(overallResult.rows[0].total_queues) || 0,
+        completedQueues: parseInt(overallResult.rows[0].completed_queues) || 0,
+        cancelledQueues: parseInt(overallResult.rows[0].cancelled_queues) || 0,
+        averageWaitTime: overallResult.rows[0].avg_wait_time 
+          ? Math.round(overallResult.rows[0].avg_wait_time) 
+          : null,
+        averageServiceTime: overallResult.rows[0].avg_service_time 
+          ? Math.round(overallResult.rows[0].avg_service_time) 
+          : null,
+        peakHours: peakHoursResult.rows.map(row => ({
+          hour: parseInt(row.hour),
+          queueCount: parseInt(row.queue_count),
+        })),
+        serviceStatistics: serviceStatsResult.rows.map(row => ({
+          serviceId: row.id,
+          serviceName: row.name,
+          totalQueues: parseInt(row.total_queues) || 0,
+          completedQueues: parseInt(row.completed_queues) || 0,
+          averageWaitTime: row.avg_wait_time ? Math.round(row.avg_wait_time) : null,
+          averageQueuesPerDay: row.avg_queues_per_day 
+            ? Math.round(row.avg_queues_per_day * 100) / 100 
+            : 0,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Get analytics error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching analytics',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get all users
+ * GET /api/admin/users
+ */
+exports.getAllUsers = async (req, res) => {
+  try {
+    const { role, page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+
+    let sql = `
+      SELECT id, student_id, email, first_name, last_name, 
+             phone_number, role, is_active, created_at, updated_at
+      FROM users
+    `;
+    const params = [];
+    let paramCount = 1;
+
+    if (role) {
+      sql += ` WHERE role = $${paramCount}`;
+      params.push(role);
+      paramCount++;
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    params.push(limit, offset);
+
+    // Get total count
+    let countSql = `SELECT COUNT(*) as total FROM users`;
+    const countParams = [];
+    if (role) {
+      countSql += ` WHERE role = $1`;
+      countParams.push(role);
+    }
+
+    const [result, countResult] = await Promise.all([
+      query(sql, params),
+      query(countSql, countParams),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        users: result.rows,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: parseInt(countResult.rows[0].total),
+          totalPages: Math.ceil(countResult.rows[0].total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get all users error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching users',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Update user
+ * PUT /api/admin/users/:id
+ */
+exports.updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active, role } = req.body;
+
+    const updateData = {};
+    if (is_active !== undefined) updateData.is_active = is_active;
+    if (role !== undefined) updateData.role = role;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'No valid fields to update',
+        },
+      });
+    }
+
+    const updatedUser = await User.update(id, updateData);
+
+    res.json({
+      success: true,
+      data: updatedUser,
+      message: 'User updated successfully',
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error updating user',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get all services (admin - includes inactive)
+ * GET /api/admin/services
+ */
+exports.getAllServices = async (req, res) => {
+  try {
+    const services = await Service.findAll(true); // Include inactive
+
+    res.json({
+      success: true,
+      data: services,
+    });
+  } catch (error) {
+    console.error('Get all services error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching services',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Create a new service
+ * POST /api/admin/services
+ */
+exports.createService = async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      location,
+      estimated_service_time,
+      max_queue_size,
+      operating_hours_start,
+      operating_hours_end,
+      is_active,
+    } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Service name is required',
+        },
+      });
+    }
+
+    const serviceData = {
+      name,
+      description,
+      location,
+      estimated_service_time,
+      max_queue_size,
+      operating_hours_start,
+      operating_hours_end,
+      is_active,
+    };
+
+    const newService = await Service.create(serviceData);
+
+    res.status(201).json({
+      success: true,
+      data: newService,
+      message: 'Service created successfully',
+    });
+  } catch (error) {
+    console.error('Create service error:', error);
+    
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Service with this name already exists',
+        },
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error creating service',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Update a service
+ * PUT /api/admin/services/:id
+ */
+exports.updateService = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const service = await Service.findById(id);
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Service not found',
+        },
+      });
+    }
+
+    const updatedService = await Service.update(id, updateData);
+
+    res.json({
+      success: true,
+      data: updatedService,
+      message: 'Service updated successfully',
+    });
+  } catch (error) {
+    console.error('Update service error:', error);
+    
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Service with this name already exists',
+        },
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error updating service',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Delete (deactivate) a service
+ * DELETE /api/admin/services/:id
+ */
+exports.deleteService = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const service = await Service.findById(id);
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Service not found',
+        },
+      });
+    }
+
+    const deletedService = await Service.delete(id);
+    
+    if (!deletedService) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'Failed to delete service',
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Service deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete service error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error deleting service',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get all counters (admin - includes inactive)
+ * GET /api/admin/counters
+ */
+exports.getAllCounters = async (req, res) => {
+  try {
+    const counters = await Counter.findAll(true); // Include inactive
+
+    res.json({
+      success: true,
+      data: counters,
+    });
+  } catch (error) {
+    console.error('Get all counters error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching counters',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Create a new counter
+ * POST /api/admin/counters
+ */
+exports.createCounter = async (req, res) => {
+  try {
+    const {
+      service_id,
+      counter_number,
+      name,
+      status,
+      is_active,
+    } = req.body;
+
+    if (!service_id || !counter_number) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Service ID and counter number are required',
+        },
+      });
+    }
+
+    // Check if service exists
+    const service = await Service.findById(service_id);
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Service not found',
+        },
+      });
+    }
+
+    const counterData = {
+      service_id,
+      counter_number,
+      name,
+      status,
+      is_active,
+    };
+
+    const newCounter = await Counter.create(counterData);
+
+    res.status(201).json({
+      success: true,
+      data: newCounter,
+      message: 'Counter created successfully',
+    });
+  } catch (error) {
+    console.error('Create counter error:', error);
+    
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Counter with this number already exists for this service',
+        },
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error creating counter',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Update a counter
+ * PUT /api/admin/counters/:id
+ */
+exports.updateCounter = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const counter = await Counter.findById(id);
+    if (!counter) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Counter not found',
+        },
+      });
+    }
+
+    // If service_id is being updated, verify it exists
+    if (updateData.service_id) {
+      const service = await Service.findById(updateData.service_id);
+      if (!service) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: 'Service not found',
+          },
+        });
+      }
+    }
+
+    // Validate status if provided
+    if (updateData.status) {
+      const allowedStatuses = ['open', 'busy', 'closed', 'break'];
+      if (!allowedStatuses.includes(updateData.status)) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            message: 'Invalid counter status',
+          },
+        });
+      }
+    }
+
+    const updatedCounter = await Counter.update(id, updateData);
+
+    res.json({
+      success: true,
+      data: updatedCounter,
+      message: 'Counter updated successfully',
+    });
+  } catch (error) {
+    console.error('Update counter error:', error);
+    
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Counter with this number already exists for this service',
+        },
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error updating counter',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Delete (deactivate) a counter
+ * DELETE /api/admin/counters/:id
+ */
+exports.deleteCounter = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const counter = await Counter.findById(id);
+    if (!counter) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Counter not found',
+        },
+      });
+    }
+
+    const deletedCounter = await Counter.delete(id);
+    
+    if (!deletedCounter) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'Failed to delete counter',
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Counter deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete counter error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error deleting counter',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Assign counter to staff members
+ * POST /api/admin/counters/:id/assign-staff
+ */
+exports.assignCounterToStaff = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_ids, is_primary } = req.body;
+
+    if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'User IDs array is required',
+        },
+      });
+    }
+
+    const counter = await Counter.findById(id);
+    if (!counter) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Counter not found',
+        },
+      });
+    }
+
+    const { query } = require('../config/database');
+    
+    // Remove existing assignments for this counter
+    await query('DELETE FROM counter_staff WHERE counter_id = $1', [id]);
+
+    // Insert new assignments
+    const insertPromises = user_ids.map((userId, index) => {
+      const primary = is_primary === true && index === 0 ? true : false;
+      return query(
+        'INSERT INTO counter_staff (user_id, counter_id, is_primary) VALUES ($1, $2, $3) ON CONFLICT (user_id, counter_id) DO UPDATE SET is_primary = $3',
+        [userId, id, primary]
+      );
+    });
+
+    await Promise.all(insertPromises);
+
+    res.json({
+      success: true,
+      message: 'Counter assigned to staff successfully',
+    });
+  } catch (error) {
+    console.error('Assign counter to staff error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error assigning counter to staff',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get counter staff assignments
+ * GET /api/admin/counters/:id/staff
+ */
+exports.getCounterStaff = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const counter = await Counter.findById(id);
+    if (!counter) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Counter not found',
+        },
+      });
+    }
+
+    const { query } = require('../config/database');
+    const result = await query(
+      `SELECT cs.*, u.id as user_id, u.first_name, u.last_name, u.email, u.student_id
+       FROM counter_staff cs
+       JOIN users u ON cs.user_id = u.id
+       WHERE cs.counter_id = $1
+       ORDER BY cs.is_primary DESC, u.first_name`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Get counter staff error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching counter staff',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get all queues with filters
+ * GET /api/admin/queues
+ */
+exports.getAllQueues = async (req, res) => {
+  try {
+    const filters = {
+      status: req.query.status,
+      serviceId: req.query.service_id,
+      startDate: req.query.start_date,
+      endDate: req.query.end_date,
+      search: req.query.search,
+      page: parseInt(req.query.page) || 1,
+      limit: parseInt(req.query.limit) || 50,
+    };
+
+    const result = await Queue.findAll(filters);
+
+    res.json({
+      success: true,
+      data: result.queues,
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        totalPages: result.totalPages,
+      },
+    });
+  } catch (error) {
+    console.error('Get all queues error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching queues',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get display board data (for TV projection)
+ * GET /api/admin/display-board
+ */
+exports.getDisplayBoard = async (req, res) => {
+  try {
+    const { serviceId } = req.query;
+
+    // Get currently serving queues
+    const servingSql = `
+      SELECT 
+        qe.id, qe.queue_number, qe.queue_position,
+        s.name as service_name, s.location as service_location,
+        c.counter_number, c.name as counter_name
+      FROM queue_entries qe
+      JOIN services s ON qe.service_id = s.id
+      LEFT JOIN counters c ON qe.counter_id = c.id
+      WHERE qe.status = 'serving'
+        ${serviceId ? 'AND qe.service_id = $1' : ''}
+      ORDER BY qe.started_serving_at DESC;
+    `;
+
+    // Get called queues (next in line)
+    const calledSql = `
+      SELECT 
+        qe.id, qe.queue_number, qe.queue_position,
+        s.name as service_name, s.location as service_location,
+        c.counter_number, c.name as counter_name
+      FROM queue_entries qe
+      JOIN services s ON qe.service_id = s.id
+      LEFT JOIN counters c ON qe.counter_id = c.id
+      WHERE qe.status = 'called'
+        ${serviceId ? 'AND qe.service_id = $1' : ''}
+      ORDER BY qe.called_at DESC
+      LIMIT 5;
+    `;
+
+    // Get waiting queues count per service
+    const waitingSql = `
+      SELECT 
+        s.id as service_id, s.name as service_name,
+        COUNT(qe.id) as waiting_count
+      FROM services s
+      LEFT JOIN queue_entries qe ON s.id = qe.service_id 
+        AND qe.status = 'waiting'
+      WHERE s.is_active = true
+        ${serviceId ? 'AND s.id = $1' : ''}
+      GROUP BY s.id, s.name
+      ORDER BY s.name;
+    `;
+
+    const queryParams = serviceId ? [serviceId] : [];
+
+    const { query } = require('../config/database');
+    
+    const [servingResult, calledResult, waitingResult] = await Promise.all([
+      query(servingSql, queryParams),
+      query(calledSql, queryParams),
+      query(waitingSql, queryParams),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        serving: servingResult.rows,
+        called: calledResult.rows,
+        waiting: waitingResult.rows,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Get display board error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching display board data',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Get system settings
+ * GET /api/admin/settings
+ */
+exports.getSystemSettings = async (req, res) => {
+  try {
+    const cache = require('../utils/cache');
+    const cacheKey = 'system:settings';
+    
+    // Try to get from cache first (settings don't change frequently)
+    let cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json({
+        success: true,
+        data: cached,
+      });
+    }
+
+    const { query } = require('../config/database');
+    
+    // Default settings to return if table doesn't exist
+    const defaultSettings = {
+      queue_number_prefix: '',
+      notification_before_minutes: 5,
+      auto_refresh_interval: 5,
+      display_board_refresh_interval: 5,
+      max_queue_per_user: 3,
+      enable_sms_notifications: false,
+      enable_email_notifications: false,
+      system_maintenance_mode: false,
+      maintenance_message: '',
+    };
+    
+    try {
+      // Check if table exists and if settings exist
+      const checkSql = `SELECT COUNT(*) as count FROM system_settings WHERE id = 1;`;
+      const checkResult = await query(checkSql);
+      
+      if (checkResult.rows[0].count === '0') {
+        // Create default settings
+        const insertSql = `
+          INSERT INTO system_settings (id, settings, created_at, updated_at)
+          VALUES (1, $1::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT (id) DO NOTHING
+          RETURNING *;
+        `;
+        const insertResult = await query(insertSql, [JSON.stringify(defaultSettings)]);
+        
+        if (insertResult.rows.length > 0) {
+          return res.json({
+            success: true,
+            data: insertResult.rows[0].settings,
+          });
+        }
+        
+        // If insert didn't work, try to get existing
+        const getSql = `SELECT settings FROM system_settings WHERE id = 1;`;
+        const result = await query(getSql);
+        
+        if (result.rows.length > 0) {
+          const settings = result.rows[0].settings;
+          // Cache for 10 minutes
+          cache.set(cacheKey, settings, 10 * 60 * 1000);
+          return res.json({
+            success: true,
+            data: settings,
+          });
+        }
+      } else {
+        // Get existing settings
+        const getSql = `SELECT settings FROM system_settings WHERE id = 1;`;
+        const result = await query(getSql);
+        
+        if (result.rows.length > 0) {
+          const settings = result.rows[0].settings;
+          // Cache for 10 minutes
+          cache.set(cacheKey, settings, 10 * 60 * 1000);
+          return res.json({
+            success: true,
+            data: settings,
+          });
+        }
+      }
+    } catch (tableError) {
+      // Table doesn't exist - return default settings
+      console.warn('System settings table not found, returning defaults:', tableError.message);
+      // Cache defaults for shorter time (1 minute) in case table is created
+      cache.set(cacheKey, defaultSettings, 60 * 1000);
+      return res.json({
+        success: true,
+        data: defaultSettings,
+      });
+    }
+    
+    // Fallback to default settings
+    cache.set(cacheKey, defaultSettings, 60 * 1000);
+    res.json({
+      success: true,
+      data: defaultSettings,
+    });
+  } catch (error) {
+    console.error('Get system settings error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error fetching system settings',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
+ * Update system settings
+ * PUT /api/admin/settings
+ */
+exports.updateSystemSettings = async (req, res) => {
+  try {
+    const settings = req.body;
+    const { query } = require('../config/database');
+    
+    try {
+      const updateSql = `
+        UPDATE system_settings
+        SET settings = $1::jsonb, updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+        RETURNING settings;
+      `;
+      
+      const result = await query(updateSql, [JSON.stringify(settings)]);
+      
+      if (result.rows.length > 0) {
+        // Invalidate cache when settings are updated
+        const cache = require('../utils/cache');
+        cache.delete('system:settings');
+        
+        return res.json({
+          success: true,
+          data: result.rows[0].settings,
+          message: 'System settings updated successfully',
+        });
+      }
+      
+      // Create if doesn't exist
+      const insertSql = `
+        INSERT INTO system_settings (id, settings, created_at, updated_at)
+        VALUES (1, $1::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (id) DO UPDATE
+        SET settings = EXCLUDED.settings, updated_at = CURRENT_TIMESTAMP
+        RETURNING settings;
+      `;
+      const insertResult = await query(insertSql, [JSON.stringify(settings)]);
+      
+      return res.json({
+        success: true,
+        data: insertResult.rows[0].settings,
+        message: 'System settings saved successfully',
+      });
+    } catch (tableError) {
+      // Table doesn't exist - inform user they need to run migration
+      console.error('System settings table not found:', tableError.message);
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'System settings table not found. Please run the database migration to create the system_settings table.',
+          ...(process.env.NODE_ENV === 'development' && { detail: tableError.message }),
+        },
+      });
+    }
+  } catch (error) {
+    console.error('Update system settings error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error updating system settings',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
