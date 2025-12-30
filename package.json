@@ -1,0 +1,13 @@
+{
+  "name": "qtech",
+  "version": "1.0.0",
+  "description": "Q-Tech Queue Management System",
+  "scripts": {
+    "install-backend": "cd backend && npm install",
+    "start": "cd backend && node server.js"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
+
