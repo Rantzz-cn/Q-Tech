@@ -48,6 +48,35 @@ app.get('/', (req, res) => {
   });
 });
 
+// API base route
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Q-Tech API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      auth: {
+        login: 'POST /api/auth/login',
+        register: 'POST /api/auth/register',
+      },
+      services: 'GET /api/services',
+      queue: {
+        request: 'POST /api/queue/request',
+        status: 'GET /api/queue/status/:serviceId',
+        myQueue: 'GET /api/queue/my-queue',
+      },
+      admin: {
+        dashboard: 'GET /api/admin/dashboard',
+        services: 'GET /api/admin/services',
+        queues: 'GET /api/admin/queues',
+        displayBoard: 'GET /api/admin/display-board',
+        settings: 'GET /api/admin/settings',
+      },
+    },
+  });
+});
+
 // Test route
 app.get('/api/test', (req, res) => {
   res.json({
