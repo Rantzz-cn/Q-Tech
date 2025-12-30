@@ -113,7 +113,6 @@ const QueueHistoryScreen = ({ navigation }) => {
           </Text>
         </View>
       )}
-      <Ionicons name="chevron-forward" size={20} color={Colors.gray} style={styles.arrowIcon} />
     </TouchableOpacity>
   );
 
@@ -223,12 +222,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.gray,
     fontWeight: '400',
-  },
-  arrowIcon: {
-    position: 'absolute',
-    right: 20,
-    top: '50%',
-    transform: [{ translateY: -10 }],
   },
 });
 
