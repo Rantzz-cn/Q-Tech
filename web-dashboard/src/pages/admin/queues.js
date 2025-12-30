@@ -3,12 +3,13 @@ import { useRouter } from 'next/router';
 import { 
   FiUser, FiLogOut, FiLoader, FiSearch, FiFilter,
   FiClock, FiCheckCircle, FiXCircle, FiAlertCircle,
-  FiRefreshCw, FiChevronLeft, FiChevronRight
+  FiRefreshCw, FiChevronLeft, FiChevronRight, FiEdit3, FiMoreVertical
 } from 'react-icons/fi';
 import { MdQueue, MdAccessTime } from 'react-icons/md';
 import apiClient from '../../lib/api';
 import { isAuthenticated, getStoredUser, logout } from '../../lib/auth';
 import { toast } from '../../components/Toast';
+import ConfirmModal from '../../components/ConfirmModal';
 
 export default function QueueManagement() {
   const router = useRouter();
@@ -29,6 +30,9 @@ export default function QueueManagement() {
     total: 0,
     totalPages: 1,
   });
+  const [updatingQueueId, setUpdatingQueueId] = useState(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [selectedQueue, setSelectedQueue] = useState(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -104,6 +108,33 @@ export default function QueueManagement() {
   const handleLogout = () => {
     logout();
     router.push('/login');
+  };
+
+  const handleStatusChange = (queue) => {
+    setSelectedQueue(queue);
+    setShowStatusModal(true);
+  };
+
+  const confirmStatusChange = async (newStatus) => {
+    if (!selectedQueue) return;
+
+    try {
+      setUpdatingQueueId(selectedQueue.id);
+      const response = await apiClient.put(`/admin/queues/${selectedQueue.id}/status`, {
+        status: newStatus,
+      });
+
+      if (response.success) {
+        toast.success(`Queue ${selectedQueue.queue_number} status updated to ${newStatus}`);
+        setShowStatusModal(false);
+        setSelectedQueue(null);
+        loadQueues(); // Refresh the list
+      }
+    } catch (error) {
+      toast.error(error.error?.message || 'Failed to update queue status');
+    } finally {
+      setUpdatingQueueId(null);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -309,6 +340,7 @@ export default function QueueManagement() {
                       <th style={styles.th}>Position</th>
                       <th style={styles.th}>Requested</th>
                       <th style={styles.th}>Completed</th>
+                      <th style={styles.th}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -372,6 +404,25 @@ export default function QueueManagement() {
                               {formatDate(queue.completed_at)}
                             </span>
                           </td>
+                          <td style={styles.td}>
+                            <div style={styles.actionsCell}>
+                              <button
+                                onClick={() => handleStatusChange(queue)}
+                                disabled={updatingQueueId === queue.id}
+                                style={{
+                                  ...styles.actionButton,
+                                  opacity: updatingQueueId === queue.id ? 0.6 : 1,
+                                }}
+                                title="Change Status"
+                              >
+                                {updatingQueueId === queue.id ? (
+                                  <FiLoader className="spin" size={16} />
+                                ) : (
+                                  <FiEdit3 size={16} />
+                                )}
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -407,6 +458,50 @@ export default function QueueManagement() {
           )}
         </div>
       </main>
+
+      {/* Status Change Modal */}
+      <ConfirmModal
+        isOpen={showStatusModal}
+        onClose={() => {
+          setShowStatusModal(false);
+          setSelectedQueue(null);
+        }}
+        title="Change Queue Status"
+        message={
+          selectedQueue ? (
+            <div style={styles.statusModalContent}>
+              <p style={styles.statusModalText}>
+                Change status for queue <strong>{selectedQueue.queue_number}</strong>?
+              </p>
+              <p style={styles.statusModalSubtext}>
+                Current status: <strong>{selectedQueue.status}</strong>
+              </p>
+              <div style={styles.statusOptions}>
+                {['waiting', 'called', 'serving', 'completed', 'cancelled'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      confirmStatusChange(status);
+                    }}
+                    disabled={updatingQueueId === selectedQueue.id || status === selectedQueue.status}
+                    style={{
+                      ...styles.statusOptionButton,
+                      ...(status === selectedQueue.status && styles.statusOptionButtonActive),
+                      ...(updatingQueueId === selectedQueue.id && styles.statusOptionButtonDisabled),
+                    }}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null
+        }
+        confirmText=""
+        cancelText="Cancel"
+        onConfirm={() => {}}
+        showConfirm={false}
+      />
     </div>
   );
 }
@@ -749,5 +844,80 @@ const styles = {
     color: '#64748b',
     fontWeight: '500',
   },
+  actionsCell: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  actionButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '8px',
+    backgroundColor: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    color: '#475569',
+  },
+  statusModalContent: {
+    padding: '8px 0',
+  },
+  statusModalText: {
+    fontSize: '16px',
+    color: '#1e293b',
+    marginBottom: '12px',
+  },
+  statusModalSubtext: {
+    fontSize: '14px',
+    color: '#64748b',
+    marginBottom: '20px',
+  },
+  statusOptions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginTop: '16px',
+  },
+  statusOptionButton: {
+    padding: '10px 16px',
+    backgroundColor: '#f1f5f9',
+    border: '2px solid #e2e8f0',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#475569',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  statusOptionButtonActive: {
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
+    color: 'white',
+    cursor: 'not-allowed',
+  },
+  statusOptionButtonDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
 };
+
+// Add CSS animation for spinner
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spin {
+      animation: spin 1s linear infinite;
+    }
+  `;
+  if (!document.head.querySelector('style[data-queues-spin]')) {
+    style.setAttribute('data-queues-spin', 'true');
+    document.head.appendChild(style);
+  }
+}
 

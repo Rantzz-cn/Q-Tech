@@ -49,7 +49,7 @@ SELECT
   s.id,
   counter_num,
   s.name || ' Counter ' || counter_num,
-  'available',
+  'open',
   true
 FROM services s
 CROSS JOIN generate_series(1, 2) AS counter_num
@@ -65,30 +65,39 @@ SELECT
 FROM counters c
 JOIN services s ON c.service_id = s.id
 JOIN users u ON u.role = 'counter_staff'
-WHERE c.counter_number = 1
-LIMIT (SELECT COUNT(*) FROM counters WHERE counter_number = 1)
+WHERE c.counter_number = '1'
+LIMIT (SELECT COUNT(*) FROM counters WHERE counter_number = '1')
 ON CONFLICT DO NOTHING;
 
 -- Insert Demo Queue Entries (for demonstration)
 -- These will show various queue states
 INSERT INTO queue_entries (user_id, service_id, queue_number, queue_position, status, requested_at, estimated_wait_time)
+WITH numbered_entries AS (
+  SELECT 
+    u.id as user_id,
+    s.id as service_id,
+    s.queue_prefix,
+    s.estimated_service_time,
+    ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id) as row_num
+  FROM users u
+  CROSS JOIN services s
+  WHERE u.role = 'student' 
+    AND s.is_active = true
+)
 SELECT 
-  u.id,
-  s.id,
-  s.queue_prefix || '-' || LPAD((ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id))::text, 3, '0'),
-  ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id),
+  user_id,
+  service_id,
+  COALESCE(queue_prefix, '') || '-' || LPAD(row_num::text, 3, '0'),
+  row_num,
   CASE 
-    WHEN ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id) = 1 THEN 'serving'
-    WHEN ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id) <= 3 THEN 'called'
+    WHEN row_num = 1 THEN 'serving'
+    WHEN row_num <= 3 THEN 'called'
     ELSE 'waiting'
   END,
-  CURRENT_TIMESTAMP - (INTERVAL '1 hour' * (ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id))),
-  s.estimated_service_time * (ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id))
-FROM users u
-CROSS JOIN services s
-WHERE u.role = 'student' 
-  AND s.is_active = true
-  AND ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY u.id) <= 5
+  CURRENT_TIMESTAMP - (INTERVAL '1 hour' * row_num),
+  estimated_service_time * row_num
+FROM numbered_entries
+WHERE row_num <= 5
 ON CONFLICT DO NOTHING;
 
 -- Update some queues to completed status (for history)

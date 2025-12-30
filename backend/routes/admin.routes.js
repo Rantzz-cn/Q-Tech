@@ -109,6 +109,13 @@ router.get('/counters/:id/staff', authenticateToken, authorize('admin'), adminCo
 router.get('/queues', authenticateToken, authorize('admin'), adminController.getAllQueues);
 
 /**
+ * @route   PUT /api/admin/queues/:id/status
+ * @desc    Update queue status
+ * @access  Private (Admin only)
+ */
+router.put('/queues/:id/status', authenticateToken, authorize('admin'), adminController.updateQueueStatus);
+
+/**
  * @route   GET /api/admin/display-board
  * @desc    Get display board data for TV projection
  * @access  Public (or can be protected with a special token)

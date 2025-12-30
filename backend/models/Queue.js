@@ -337,6 +337,73 @@ class Queue {
   }
 
   /**
+   * Update queue status (admin only)
+   */
+  static async updateStatus(queueId, status, adminId = null) {
+    const allowedStatuses = ['waiting', 'called', 'serving', 'completed', 'cancelled'];
+    
+    if (!allowedStatuses.includes(status)) {
+      throw new Error('Invalid queue status');
+    }
+
+    // Get current queue entry
+    const queueSql = `SELECT * FROM queue_entries WHERE id = $1;`;
+    const queueResult = await query(queueSql, [queueId]);
+    
+    if (!queueResult.rows[0]) {
+      throw new Error('Queue entry not found');
+    }
+
+    const queue = queueResult.rows[0];
+    const updateFields = ['status = $1'];
+    const updateValues = [status];
+    let paramIndex = 2;
+
+    // Set timestamps based on status
+    if (status === 'called' && !queue.called_at) {
+      updateFields.push(`called_at = NOW()`);
+    }
+    if (status === 'serving' && !queue.started_serving_at) {
+      updateFields.push(`started_serving_at = NOW()`);
+    }
+    if (status === 'completed') {
+      updateFields.push(`completed_at = NOW()`);
+      if (!queue.started_serving_at) {
+        updateFields.push(`started_serving_at = NOW()`);
+      }
+    }
+    if (status === 'cancelled') {
+      updateFields.push(`cancelled_at = NOW()`);
+    }
+
+    // If moving from serving to another status, clear counter assignment
+    if (queue.status === 'serving' && status !== 'serving') {
+      updateFields.push(`counter_id = NULL`);
+    }
+
+    const sql = `
+      UPDATE queue_entries
+      SET ${updateFields.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *;
+    `;
+    updateValues.push(queueId);
+
+    const result = await query(sql, updateValues);
+    
+    // Log the status change
+    await this.logQueueAction(
+      queueId,
+      queue.service_id,
+      queue.counter_id,
+      `status_changed_to_${status}`,
+      adminId ? { changed_by_admin: adminId, previous_status: queue.status } : null
+    );
+
+    return result.rows[0];
+  }
+
+  /**
    * Log queue action
    */
   static async logQueueAction(queueEntryId, serviceId, counterId, action, metadata = null) {

@@ -885,6 +885,67 @@ exports.getAllQueues = async (req, res) => {
 };
 
 /**
+ * Update queue status (admin only)
+ * PUT /api/admin/queues/:id/status
+ */
+exports.updateQueueStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const adminId = req.user.userId;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Status is required',
+        },
+      });
+    }
+
+    const updatedQueue = await Queue.updateStatus(id, status, adminId);
+
+    // Emit socket event for real-time updates
+    const QueueEvents = require('../socket/queueEvents');
+    await QueueEvents.emitQueueUpdated(updatedQueue);
+
+    res.json({
+      success: true,
+      data: updatedQueue,
+      message: `Queue status updated to ${status}`,
+    });
+  } catch (error) {
+    console.error('Update queue status error:', error);
+    
+    if (error.message === 'Queue entry not found') {
+      return res.status(404).json({
+        success: false,
+        error: {
+          message: 'Queue entry not found',
+        },
+      });
+    }
+
+    if (error.message === 'Invalid queue status') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid queue status',
+        },
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error updating queue status',
+        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+      },
+    });
+  }
+};
+
+/**
  * Get display board data (for TV projection)
  * GET /api/admin/display-board
  */

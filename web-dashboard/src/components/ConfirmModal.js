@@ -8,7 +8,8 @@ export default function ConfirmModal({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  type = 'warning' // 'warning', 'danger', 'info'
+  type = 'warning', // 'warning', 'danger', 'info'
+  showConfirm = true // Show confirm button by default
 }) {
   if (!isOpen) return null;
 
@@ -71,21 +72,23 @@ export default function ConfirmModal({
           >
             {cancelText}
           </button>
-          <button
-            onClick={onConfirm}
-            style={{
-              ...confirmButtonStyles,
-              backgroundColor: typeStyles.buttonBg,
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = typeStyles.buttonHover;
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = typeStyles.buttonBg;
-            }}
-          >
-            {confirmText}
-          </button>
+          {showConfirm && (
+            <button
+              onClick={onConfirm}
+              style={{
+                ...confirmButtonStyles,
+                backgroundColor: typeStyles.buttonBg,
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = typeStyles.buttonHover;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = typeStyles.buttonBg;
+              }}
+            >
+              {confirmText}
+            </button>
+          )}
         </div>
       </div>
     </div>

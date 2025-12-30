@@ -178,6 +178,38 @@ class QueueEvents {
       console.error('Error emitting queue cancelled event:', error);
     }
   }
+
+  /**
+   * Emit queue updated event (for admin status changes)
+   */
+  static async emitQueueUpdated(queueEntry) {
+    try {
+      const serviceId = queueEntry.service_id;
+
+      // Get updated service queue status
+      const queueStatus = await Service.getQueueStatus(serviceId);
+      const queueEntries = await Queue.getServiceQueueStatus(serviceId);
+
+      socketServer.emitQueueUpdate(serviceId, {
+        type: 'queue_updated',
+        queueNumber: queueEntry.queue_number,
+        status: queueEntry.status,
+        waitingCount: parseInt(queueStatus.waiting_count) || 0,
+        currentServing: queueEntries.find(q => q.status === 'serving')?.queue_number || null,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Notify the user if status changed
+      socketServer.emitQueueCalled(queueEntry.user_id, {
+        type: 'queue_status_changed',
+        queueNumber: queueEntry.queue_number,
+        status: queueEntry.status,
+        message: `Your queue ${queueEntry.queue_number} status has been updated to ${queueEntry.status}`,
+      });
+    } catch (error) {
+      console.error('Error emitting queue updated event:', error);
+    }
+  }
 }
 
 module.exports = QueueEvents;
