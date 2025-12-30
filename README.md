@@ -64,8 +64,8 @@ Q-Tech is a comprehensive digital queue management system that eliminates physic
 
 1. **Clone the repository**:
    ```bash
-   git clone <repository-url>
-   cd capstoneproj
+   git clone https://github.com/Rantzz-cn/Q-Tech.git
+   cd Q-Tech
    ```
 
 2. **Setup Backend**:
