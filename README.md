@@ -243,15 +243,11 @@ ISC License
 
 ## 👤 Author
 
-**Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- Email: your.email@example.com
+- GitHub: [Rantzz-cn](https://github.com/Rantzz-cn)
+- Email: rongnuanteraldico@gmail.com
 
-## 🙏 Acknowledgments
 
-- Central Luzon State University
-- All contributors and testers
+
 
 ---
 
-**Built with ❤️ by Q-Tech**
