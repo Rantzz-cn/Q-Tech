@@ -63,7 +63,8 @@ exports.getAllServices = async (req, res) => {
       success: false,
       error: {
         message: 'Error fetching services',
-        ...(process.env.NODE_ENV === 'development' && { detail: error.message }),
+        detail: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       },
     });
   }

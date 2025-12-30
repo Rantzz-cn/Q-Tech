@@ -9,20 +9,40 @@ class Service {
    * Get all active services
    */
   static async findAll(includeInactive = false) {
-    const whereClause = includeInactive ? '' : 'WHERE is_active = true';
-    const sql = `
-      SELECT id, name, description, location, is_active, 
-             estimated_service_time, max_queue_size,
-             operating_hours_start, operating_hours_end,
-             COALESCE(queue_prefix, '') as queue_prefix,
-             created_at, updated_at
-      FROM services
-      ${whereClause}
-      ORDER BY name;
-    `;
+    try {
+      const whereClause = includeInactive ? '' : 'WHERE is_active = true';
+      const sql = `
+        SELECT id, name, description, location, is_active, 
+               estimated_service_time, max_queue_size,
+               operating_hours_start, operating_hours_end,
+               COALESCE(queue_prefix, '') as queue_prefix,
+               created_at, updated_at
+        FROM services
+        ${whereClause}
+        ORDER BY name;
+      `;
 
-    const result = await query(sql);
-    return result.rows;
+      const result = await query(sql);
+      return result.rows;
+    } catch (error) {
+      // If queue_prefix column doesn't exist, try without it
+      if (error.message && error.message.includes('queue_prefix')) {
+        const whereClause = includeInactive ? '' : 'WHERE is_active = true';
+        const sql = `
+          SELECT id, name, description, location, is_active, 
+                 estimated_service_time, max_queue_size,
+                 operating_hours_start, operating_hours_end,
+                 '' as queue_prefix,
+                 created_at, updated_at
+          FROM services
+          ${whereClause}
+          ORDER BY name;
+        `;
+        const result = await query(sql);
+        return result.rows;
+      }
+      throw error;
+    }
   }
 
   /**
