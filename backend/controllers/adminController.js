@@ -382,6 +382,10 @@ exports.createService = async (req, res) => {
 
     const newService = await Service.create(serviceData);
 
+    // Clear services cache
+    const cache = require('../utils/cache');
+    cache.delete('services:active');
+
     res.status(201).json({
       success: true,
       data: newService,
@@ -429,6 +433,10 @@ exports.updateService = async (req, res) => {
     }
 
     const updatedService = await Service.update(id, updateData);
+
+    // Clear services cache
+    const cache = require('../utils/cache');
+    cache.delete('services:active');
 
     res.json({
       success: true,
@@ -485,6 +493,10 @@ exports.deleteService = async (req, res) => {
         },
       });
     }
+
+    // Clear services cache
+    const cache = require('../utils/cache');
+    cache.delete('services:active');
 
     res.json({
       success: true,
@@ -570,6 +582,10 @@ exports.createCounter = async (req, res) => {
 
     const newCounter = await Counter.create(counterData);
 
+    // Clear services cache (counters are part of service data)
+    const cache = require('../utils/cache');
+    cache.delete('services:active');
+
     res.status(201).json({
       success: true,
       data: newCounter,
@@ -644,6 +660,10 @@ exports.updateCounter = async (req, res) => {
 
     const updatedCounter = await Counter.update(id, updateData);
 
+    // Clear services cache (counters are part of service data)
+    const cache = require('../utils/cache');
+    cache.delete('services:active');
+
     res.json({
       success: true,
       data: updatedCounter,
@@ -699,6 +719,10 @@ exports.deleteCounter = async (req, res) => {
         },
       });
     }
+
+    // Clear services cache (counters are part of service data)
+    const cache = require('../utils/cache');
+    cache.delete('services:active');
 
     res.json({
       success: true,
