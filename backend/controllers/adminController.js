@@ -1123,3 +1123,109 @@ exports.updateSystemSettings = async (req, res) => {
   }
 };
 
+/**
+ * Run database migrations
+ * POST /api/admin/migrate
+ * Requires MIGRATION_SECRET in environment variables
+ */
+exports.runMigrations = async (req, res) => {
+  try {
+    // Check for migration secret
+    const providedSecret = req.headers['x-migration-secret'] || req.body.secret;
+    const expectedSecret = process.env.MIGRATION_SECRET;
+
+    if (!expectedSecret) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          message: 'Migration secret not configured',
+        },
+      });
+    }
+
+    if (providedSecret !== expectedSecret) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          message: 'Invalid migration secret',
+        },
+      });
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+
+    const migrations = [
+      '001_create_tables.sql',
+      '002_create_system_settings.sql',
+      '003_add_queue_prefix_to_services.sql',
+      '004_add_performance_indexes.sql',
+    ];
+
+    const migrationsDir = path.join(__dirname, '..', '..', 'database', 'migrations');
+    const results = [];
+
+    for (const migrationFile of migrations) {
+      const filePath = path.join(migrationsDir, migrationFile);
+      
+      if (!fs.existsSync(filePath)) {
+        results.push({
+          file: migrationFile,
+          status: 'skipped',
+          message: 'File not found',
+        });
+        continue;
+      }
+
+      try {
+        const sql = fs.readFileSync(filePath, 'utf8');
+        await query(sql);
+        results.push({
+          file: migrationFile,
+          status: 'success',
+          message: 'Migration completed',
+        });
+      } catch (error) {
+        if (error.message.includes('already exists') || 
+            error.message.includes('duplicate')) {
+          results.push({
+            file: migrationFile,
+            status: 'skipped',
+            message: 'Already applied',
+          });
+        } else {
+          results.push({
+            file: migrationFile,
+            status: 'error',
+            message: error.message,
+          });
+        }
+      }
+    }
+
+    // Verify tables
+    const tablesResult = await query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      ORDER BY table_name;
+    `);
+
+    res.json({
+      success: true,
+      message: 'Migrations completed',
+      results,
+      tables: tablesResult.rows.map(row => row.table_name),
+    });
+  } catch (error) {
+    console.error('Run migrations error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Error running migrations',
+        detail: error.message,
+      },
+    });
+  }
+};
+

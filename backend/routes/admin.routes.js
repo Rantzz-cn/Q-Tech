@@ -129,5 +129,12 @@ router.get('/settings', authenticateToken, authorize('admin'), adminController.g
  */
 router.put('/settings', authenticateToken, authorize('admin'), adminController.updateSystemSettings);
 
+/**
+ * @route   POST /api/admin/migrate
+ * @desc    Run database migrations (requires MIGRATION_SECRET)
+ * @access  Protected by secret token
+ */
+router.post('/migrate', adminController.runMigrations);
+
 module.exports = router;
 
