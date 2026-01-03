@@ -3,7 +3,7 @@
 ## Base URL
 ```
 Development: http://localhost:3000/api
-Production: https://api.nexus.clsu.edu.ph/api
+Production: https://q-tech.vercel.app/
 ```
 
 ## Authentication
